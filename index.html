@@ -72,26 +72,41 @@
                 <h2 class="view-title">本日のプロトコル</h2>
 
                 <div class="panel highlight-panel">
-                    <h3><i class="fa-solid fa-robot"></i> AIの提案</h3>
+                    <h3><i class="fa-solid fa-robot"></i> 次回のプロトコル (Upcoming)</h3>
                     <div class="recommendation-card">
                         <div class="rec-time">
-                            <i class="fa-regular fa-clock"></i> <span id="dash-rec-time">18:30 - 19:30</span>
+                            <i class="fa-regular fa-clock"></i> <span id="dash-rec-time">---</span>
                         </div>
                         <div class="rec-details">
                             <span class="badge intensity-high" id="dash-rec-intensity">高強度</span>
-                            <span class="badge target-muscle" id="dash-rec-muscle">胸・三頭 (My Menu A)</span>
+                            <span class="badge target-muscle" id="dash-rec-muscle">---</span>
                         </div>
-                        <p class="rec-reason">カレンダー解析：夜の予定なし。<br>完全なボリュームをこなす最適なタイミングです。</p>
-                        <button class="btn-action pulse" id="btn-accept-protocol"><i
-                                class="fa-solid fa-calendar-plus"></i> カレンダーに登録 (OK)</button>
+                        <p class="rec-reason" id="dash-rec-reason">カレンダーを解析して最適なタイミングを提案します。</p>
+                        <button class="btn-action pulse" id="btn-start-today"><i class="fa-solid fa-play"></i> 次のメニューを開始
+                            (LOGへ)</button>
                     </div>
                 </div>
 
                 <div class="panel">
-                    <h3>回避履歴</h3>
-                    <ul class="conflict-list">
-                        <li><i class="fa-solid fa-ban text-danger"></i> 20:00 飲み会 (場所: 飲食店) -> 時間帯を除外</li>
-                        <li><i class="fa-solid fa-ban text-danger"></i> 14:00 商談 (場所: 出先) -> 優先度低下</li>
+                    <h3><i class="fa-solid fa-chart-line"></i> 実績データ (Accumulation)</h3>
+                    <div class="grid-2col text-center mt-10">
+                        <div>
+                            <div style="font-size:1.5rem; font-weight:bold; font-family:var(--font-heading); color:var(--primary);"
+                                id="stat-total-workouts">0</div>
+                            <div class="small-text text-muted">完了セッション数</div>
+                        </div>
+                        <div>
+                            <div style="font-size:1.5rem; font-weight:bold; font-family:var(--font-heading); color:var(--success);"
+                                id="stat-total-volume">0<span style="font-size:0.8rem;">kg</span></div>
+                            <div class="small-text text-muted">累計挙上重量</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3><i class="fa-solid fa-shield-halved"></i> 回避履歴 (Log)</h3>
+                    <ul class="conflict-list" id="conflict-log-list">
+                        <li><i class="fa-solid fa-info-circle text-muted"></i> カレンダー解析による回避データはここに表示されます</li>
                     </ul>
                 </div>
             </section>

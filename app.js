@@ -210,36 +210,81 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- V6 Schedule Logic ---
+    // --- V7 Schedule Logic (with Calendar Analysis) ---
     let upcomingSessions = JSON.parse(localStorage.getItem('ag_sessions') || '[]');
+    let avoidanceLog = JSON.parse(localStorage.getItem('ag_avoidance') || '[]');
+    let workoutHistory = JSON.parse(localStorage.getItem('ag_history') || '[]');
 
     function saveSessions() {
         localStorage.setItem('ag_sessions', JSON.stringify(upcomingSessions));
     }
 
-    function generateMonthlySchedule() {
+    // NGキーワード: これらを含む予定がある日はトレーニングを避ける
+    const NG_KEYWORDS = ['飲み会', '飲み', '宴会', 'パーティ', '残業', '出張', '接待', '歓迎', '送別'];
+
+    async function generateMonthlySchedule() {
         const freq = parseInt(document.getElementById('set-freq') ? document.getElementById('set-freq').value : 12) || 12;
         upcomingSessions = [];
+        avoidanceLog = [];
 
-        let currentDate = new Date();
-        currentDate.setHours(18, 30, 0, 0); // default 18:30
-
-        const menus = ['A(胸・三頭)', 'B(背中・二頭)', 'C(脚・肩)'];
+        const menuNames = ['A(胸・三頭)', 'B(背中・二頭)', 'C(脚・肩)'];
         const menuIds = ['A', 'B', 'C'];
 
-        for (let i = 0; i < freq; i++) {
-            currentDate.setDate(currentDate.getDate() + 2); // 簡略化：2日おき
+        // Googleカレンダーから今後60日間の予定を取得（認証済みの場合）
+        let busyDates = new Set(); // 'YYYY-MM-DD'形式
+        if (isGapiAuthorized) {
+            try {
+                const now = new Date();
+                const until = new Date(now);
+                until.setDate(until.getDate() + 60);
+                const resp = await gapi.client.calendar.events.list({
+                    calendarId: 'primary',
+                    timeMin: now.toISOString(),
+                    timeMax: until.toISOString(),
+                    singleEvents: true,
+                    orderBy: 'startTime',
+                    maxResults: 200
+                });
+                const events = resp.result.items || [];
+                events.forEach(ev => {
+                    const title = ev.summary || '';
+                    const isNG = NG_KEYWORDS.some(kw => title.includes(kw));
+                    if (isNG) {
+                        const dateKey = (ev.start.dateTime || ev.start.date).substring(0, 10);
+                        busyDates.add(dateKey);
+                        avoidanceLog.push({ date: dateKey, eventTitle: title, reason: 'NGキーワード検出' });
+                    }
+                });
+                localStorage.setItem('ag_avoidance', JSON.stringify(avoidanceLog));
+            } catch (err) {
+                console.warn('カレンダー解析スキップ:', err);
+            }
+        }
+
+        let currentDate = new Date();
+        currentDate.setHours(18, 30, 0, 0);
+        let menuIndex = 0;
+        let attempts = 0;
+
+        while (upcomingSessions.length < freq && attempts < 90) {
+            currentDate.setDate(currentDate.getDate() + 2);
+            attempts++;
+            const dateKey = currentDate.toISOString().substring(0, 10);
+            if (busyDates.has(dateKey)) continue; // NG日はスキップ
 
             upcomingSessions.push({
-                id: 'sess_' + Date.now() + '_' + i,
-                dateStr: currentDate.toISOString(),
-                menuId: menuIds[i % 3],
-                menuName: menus[i % 3],
-                eventId: null // Google Calendar Event ID when synced
+                id: 'sess_' + Date.now() + '_' + upcomingSessions.length,
+                dateStr: new Date(currentDate).toISOString(),
+                menuId: menuIds[menuIndex % 3],
+                menuName: menuNames[menuIndex % 3],
+                eventId: null
             });
+            menuIndex++;
         }
         saveSessions();
         renderScheduleList();
+        updateDashboard();
+        renderAvoidanceLog();
     }
 
     function renderScheduleList() {
@@ -417,6 +462,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize list on boot
     renderScheduleList();
+    updateDashboard();
+    renderAvoidanceLog();
+    updateStatsUI();
+
+    // --- V7: Dashboard updater ---
+    function updateDashboard() {
+        const nextSess = upcomingSessions.length > 0 ? upcomingSessions[0] : null;
+        if (!nextSess) return;
+        const d = new Date(nextSess.dateStr);
+        const days = ['日', '月', '火', '水', '木', '金', '土'];
+        const dateText = `${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]}) ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        const timeEl = document.getElementById('dash-rec-time');
+        const muscleEl = document.getElementById('dash-rec-muscle');
+        const reasonEl = document.getElementById('dash-rec-reason');
+        if (timeEl) timeEl.textContent = dateText;
+        if (muscleEl) muscleEl.textContent = `Menu ${nextSess.menuName}`;
+        if (reasonEl) reasonEl.textContent = avoidanceLog.length > 0
+            ? `NG予定を${avoidanceLog.length}件回避して最適化済み。`
+            : 'カレンダー解析でNGなし。最適なタイミングです。';
+    }
+
+    // --- V7: Avoidance log renderer ---
+    function renderAvoidanceLog() {
+        const logEl = document.getElementById('conflict-log-list');
+        if (!logEl) return;
+        if (avoidanceLog.length === 0) {
+            logEl.innerHTML = '<li><i class="fa-solid fa-info-circle text-muted"></i> 回避された予定はありません</li>';
+            return;
+        }
+        logEl.innerHTML = avoidanceLog.map(item =>
+            `<li><i class="fa-solid fa-ban text-danger"></i> ${item.date} 「${item.eventTitle}」→ スケジュール回避</li>`
+        ).join('');
+    }
+
+    // --- V7: Stats UI updater ---
+    function updateStatsUI() {
+        const totalEl = document.getElementById('stat-total-workouts');
+        const volEl = document.getElementById('stat-total-volume');
+        if (totalEl) totalEl.textContent = workoutHistory.length;
+        if (volEl) {
+            const vol = workoutHistory.reduce((sum, h) => sum + (h.volume || 0), 0);
+            volEl.innerHTML = `${vol.toLocaleString()}<span style="font-size:0.8rem;">kg</span>`;
+        }
+    }
 
     // Monthly Setup Actions
     document.getElementById('btn-build-monthly').addEventListener('click', (e) => {
@@ -460,87 +549,20 @@ document.addEventListener('DOMContentLoaded', () => {
         switchTab('view-monthly-setup');
     });
 
-    // --- 1. Dashboard Accept (V4 Intent Logic -> V5 API Insert) ---
-    document.getElementById('btn-accept-protocol').addEventListener('click', async (e) => {
-        const btn = e.target;
-        btn.innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i> 登録処理中...";
-        btn.style.background = "var(--warning)";
-        btn.style.color = "#000";
-        btn.classList.remove('pulse');
-
-        // V4/V5 Shared Data
-        const summary = "[AG] 本日のプロトコル (胸・三頭)";
-        const description = "AG-TRAINEE アプリからの自動生成スケジュールです。\n完全なボリュームをこなす最適なタイミングです。";
-
-        // Create times
-        const now = new Date();
-        const startDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 30, 0); // today 18:30 (Local)
-        const endDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 19, 30, 0);   // today 19:30 (Local)
-
-        if (isGapiAuthorized && !GAPI_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT')) {
-            // Real OAuth2 API Request
-            const event = {
-                'summary': summary,
-                'description': description,
-                'start': {
-                    'dateTime': startDateTime.toISOString(),
-                    'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone
-                },
-                'end': {
-                    'dateTime': endDateTime.toISOString(),
-                    'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone
-                }
-            };
-            try {
-                const request = gapi.client.calendar.events.insert({
-                    'calendarId': 'primary',
-                    'resource': event
-                });
-                await request.execute();
-
-                // Success
-                btn.innerHTML = "<i class='fa-solid fa-check'></i> 登録完了";
-                btn.style.background = "var(--success)";
-                btn.style.color = "#fff";
-
-                setTimeout(() => {
-                    switchTab('view-logger');
-                    btn.style.background = "var(--primary)";
-                    btn.style.color = "#111"; // reset to default
-                    btn.innerHTML = "<i class=\"fa-solid fa-calendar-plus\"></i> カレンダーに登録 (OK)";
-                    btn.classList.add('pulse');
-                }, 1000);
-            } catch (err) {
-                console.error("GAPI Insert Failed:", err);
-                alert("カレンダーへの書き込みに失敗しました。詳細：\n" + (err.result?.error?.message || "不明なエラー"));
-                btn.style.background = "var(--primary)";
-                btn.style.color = "#111";
-                btn.innerHTML = "<i class=\"fa-solid fa-calendar-plus\"></i> カレンダーに登録 (OK)";
-                btn.classList.add('pulse');
+    // --- 1. Dashboard: 次のメニューを開始ボタン (V7 simplified) ---
+    const btnStartToday = document.getElementById('btn-start-today');
+    if (btnStartToday) {
+        btnStartToday.addEventListener('click', () => {
+            // 次回セッションのメニューをLOG画面に反映
+            const nextSess = upcomingSessions[0];
+            if (nextSess && document.getElementById('my-menu-select')) {
+                document.getElementById('my-menu-select').value = nextSess.menuId || 'A';
+                currentWorkout = JSON.parse(JSON.stringify(menus[nextSess.menuId] || menus['A']));
+                renderWorkoutCards();
             }
-        } else {
-            // V4 Fallback: Web Intent Open Window
-            const yyyy = now.getUTCFullYear();
-            const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-            const dd = String(now.getUTCDate()).padStart(2, '0');
-            // Add roughly 9 hours for JST in mock URI
-            const startStr = `${yyyy}${mm}${dd}T093000Z`;
-            const endStr = `${yyyy}${mm}${dd}T103000Z`;
-            const url = `https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(summary)}&details=${encodeURIComponent(description)}&dates=${startStr}/${endStr}`;
-
-            setTimeout(() => {
-                // Open real google calendar intent in new tab
-                window.open(url, '_blank');
-
-                // Switch our app UI
-                switchTab('view-logger');
-                btn.style.background = "var(--primary)";
-                btn.style.color = "#111";
-                btn.innerHTML = "<i class=\"fa-solid fa-calendar-plus\"></i> カレンダーに登録 (OK)";
-                btn.classList.add('pulse');
-            }, 1000);
-        }
-    });
+            switchTab('view-logger');
+        });
+    }
 
     // --- 2. Workout Logger (V4 Card UI + Editor logic) ---
     // V3 Data Structure: Sets are arrays of objects
@@ -793,20 +815,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 3. Finish / Abort Workouts ---
     document.getElementById('btn-finish-workout').addEventListener('click', () => {
-        // Count uncompleted sets across all exercises
         let remainingSets = 0;
+        let sessionVolume = 0;
+
         currentWorkout.forEach(ex => {
-            remainingSets += ex.sets.filter(s => !s.done).length;
+            ex.sets.forEach(s => {
+                if (s.done && s.weight > 0) {
+                    sessionVolume += s.weight * s.reps; // kg×回数でボリューム算出
+                }
+                if (!s.done) remainingSets++;
+            });
         });
+
+        // --- V7: 実績データを ag_history に蓄積 ---
+        const menuKey = document.getElementById('my-menu-select')?.value || 'A';
+        const historyEntry = {
+            date: new Date().toISOString(),
+            menuId: menuKey,
+            volume: sessionVolume,
+            remainingSets: remainingSets
+        };
+        workoutHistory.push(historyEntry);
+        localStorage.setItem('ag_history', JSON.stringify(workoutHistory));
+
+        // 完了したセッションをPLANリストから除外（先頭が今回のセッションと一致する場合）
+        if (upcomingSessions.length > 0) {
+            const today = new Date().toISOString().substring(0, 10);
+            const first = upcomingSessions[0];
+            if ((first.dateStr || '').substring(0, 10) <= today) {
+                upcomingSessions.shift();
+                saveSessions();
+                renderScheduleList();
+                updateDashboard();
+            }
+        }
+
+        // 統計UIを更新
+        updateStatsUI();
 
         switchTab('view-feedback');
         document.getElementById('feedback-success').classList.remove('hidden');
 
         const msgEl = document.getElementById('ai-praise-message');
+        const volText = sessionVolume > 0 ? `（総ボリューム: ${sessionVolume.toLocaleString()}kg）` : '';
         if (remainingSets > 0) {
-            msgEl.innerHTML = `全体で残り ${remainingSets} セットをスキップしましたが、メイン種目は完了しています。充分な刺激です。残りの調整はカレンダーのAIリカバリーに任せてください。`;
+            msgEl.innerHTML = `${volText}<br>残り ${remainingSets} セットをスキップしましたが、充分な刺激です。残りはAIリカバリーに任せてください。`;
         } else {
-            msgEl.innerHTML = `素晴らしい！全てのセットを完璧にクリアしました。筋肉は確実に次のステージへと向かっています。`;
+            msgEl.innerHTML = `素晴らしい！全セットクリア！${volText}<br>筋肉は確実に次のステージへと向かっています。`;
         }
     });
 
