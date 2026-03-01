@@ -97,6 +97,28 @@
             </section>
 
             <!-- ========================================== -->
+            <!-- 1.5. PLAN (Monthly Schedule & Setup)       -->
+            <!-- ========================================== -->
+            <section id="view-plan" class="view-section">
+                <div class="flex-between mb-10">
+                    <h2 class="view-title" style="margin-bottom:0;">今後の予定</h2>
+                    <button class="btn-secondary" id="btn-rebuild-plan"
+                        style="width:auto; padding: 6px 12px; font-size: 0.8rem;"><i class="fa-solid fa-rotate"></i>
+                        再構築</button>
+                </div>
+
+                <div class="panel">
+                    <p class="small-text text-muted mb-15">AIが提案した今後のスケジュールです。Googleカレンダーと個別・一括で同期が可能です。</p>
+                    <button class="btn-action mb-15" id="btn-sync-all"><i class="fa-solid fa-cloud-arrow-up"></i>
+                        未同期の予定を一括追加</button>
+
+                    <div id="schedule-list" style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- JSによって予定アイテム（候補）がここに生成される -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
             <!-- 2. WORKOUT LOGGER (V3 Card UI)             -->
             <!-- ========================================== -->
             <section id="view-logger" class="view-section">
@@ -340,8 +362,12 @@
         <!-- Bottom Navigation -->
         <nav id="bottom-nav">
             <button class="nav-btn" data-target="view-dashboard">
-                <i class="fa-solid fa-radar"></i>
+                <i class="fa-solid fa-house"></i>
                 <span>HOME</span>
+            </button>
+            <button class="nav-btn" data-target="view-plan">
+                <i class="fa-solid fa-calendar-days"></i>
+                <span>PLAN</span>
             </button>
             <button class="nav-btn" data-target="view-logger">
                 <i class="fa-solid fa-dumbbell"></i>

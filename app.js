@@ -206,9 +206,217 @@ document.addEventListener('DOMContentLoaded', () => {
             switchTab('view-monthly-setup');
         } else {
             document.getElementById('bottom-nav').style.display = 'flex';
-            switchTab('view-dashboard');
+            switchTab('view-plan'); // V6 Dashboard
         }
     }
+
+    // --- V6 Schedule Logic ---
+    let upcomingSessions = JSON.parse(localStorage.getItem('ag_sessions') || '[]');
+
+    function saveSessions() {
+        localStorage.setItem('ag_sessions', JSON.stringify(upcomingSessions));
+    }
+
+    function generateMonthlySchedule() {
+        const freq = parseInt(document.getElementById('set-freq') ? document.getElementById('set-freq').value : 12) || 12;
+        upcomingSessions = [];
+
+        let currentDate = new Date();
+        currentDate.setHours(18, 30, 0, 0); // default 18:30
+
+        const menus = ['A(胸・三頭)', 'B(背中・二頭)', 'C(脚・肩)'];
+        const menuIds = ['A', 'B', 'C'];
+
+        for (let i = 0; i < freq; i++) {
+            currentDate.setDate(currentDate.getDate() + 2); // 簡略化：2日おき
+
+            upcomingSessions.push({
+                id: 'sess_' + Date.now() + '_' + i,
+                dateStr: currentDate.toISOString(),
+                menuId: menuIds[i % 3],
+                menuName: menus[i % 3],
+                eventId: null // Google Calendar Event ID when synced
+            });
+        }
+        saveSessions();
+        renderScheduleList();
+    }
+
+    function renderScheduleList() {
+        const listDiv = document.getElementById('schedule-list');
+        if (!listDiv) return;
+
+        if (upcomingSessions.length === 0) {
+            listDiv.innerHTML = '<p class="text-center text-muted">予定がありません。「再構築」ボタンから生成してください。</p>';
+            return;
+        }
+
+        listDiv.innerHTML = '';
+        upcomingSessions.forEach((sess, index) => {
+            const d = new Date(sess.dateStr);
+            const dateText = `${d.getMonth() + 1}/${d.getDate()} (${['日', '月', '火', '水', '木', '金', '土'][d.getDay()]}) ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+            const isSynced = !!sess.eventId;
+            const statusBadge = isSynced
+                ? '<span class="badge intensity-mid text-success" style="background:rgba(16,185,129,0.1); border:1px solid var(--success);">同期済</span>'
+                : '<span class="badge intensity-high text-main" style="background:#e5e7eb; color:#4b5563;">未同期</span>';
+
+            const actionBtn = isSynced
+                ? `<button class="btn-secondary danger-text action-unsync" data-index="${index}" style="padding:6px 12px; font-size:0.75rem; width:auto;"><i class="fa-solid fa-trash"></i> 削除</button>`
+                : `<button class="btn-action action-sync" data-index="${index}" style="padding:6px 12px; font-size:0.75rem; width:auto; border-radius:20px;"><i class="fa-solid fa-plus"></i> 追加</button>`;
+
+            const itemHTML = `
+                <div class="panel" style="margin-bottom:0; padding:10px 15px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-weight:bold; font-size:0.95rem; color:var(--text-light);">${dateText} ${statusBadge}</div>
+                        <div style="font-size:0.8rem; color:var(--text-main); margin-top:4px;"><i class="fa-solid fa-dumbbell"></i> Menu ${sess.menuName}</div>
+                    </div>
+                    <div>${actionBtn}</div>
+                </div>
+            `;
+            listDiv.insertAdjacentHTML('beforeend', itemHTML);
+        });
+
+        // Attach events
+        document.querySelectorAll('.action-sync').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = e.target.closest('button').getAttribute('data-index');
+                syncSingleEvent(idx, e.target.closest('button'));
+            });
+        });
+        document.querySelectorAll('.action-unsync').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = e.target.closest('button').getAttribute('data-index');
+                unsyncSingleEvent(idx, e.target.closest('button'));
+            });
+        });
+    }
+
+    async function syncSingleEvent(index, btnElement) {
+        if (!isGapiAuthorized) {
+            alert("先に「設定」タブからGoogleカレンダーを連携してください。");
+            return;
+        }
+
+        const sess = upcomingSessions[index];
+        if (sess.eventId) return;
+
+        if (btnElement) {
+            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            btnElement.disabled = true;
+        }
+
+        const d = new Date(sess.dateStr);
+        const endD = new Date(d.getTime() + 60 * 60 * 1000);
+
+        const event = {
+            'summary': `[AG] トレーニング ${sess.menuName}`,
+            'description': `AG-TRAINEE アプリからの自動生成スケジュールです。\\nメニュー: ${sess.menuName}`,
+            'start': {
+                'dateTime': d.toISOString(),
+                'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone
+            },
+            'end': {
+                'dateTime': endD.toISOString(),
+                'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone
+            }
+        };
+
+        try {
+            const request = await gapi.client.calendar.events.insert({
+                'calendarId': 'primary',
+                'resource': event
+            });
+
+            sess.eventId = request.result.id;
+            saveSessions();
+            renderScheduleList();
+        } catch (err) {
+            console.error(err);
+            alert("同期に失敗しました。\\n" + (err.result?.error?.message || ""));
+            if (btnElement) {
+                btnElement.innerHTML = '<i class="fa-solid fa-plus"></i> 追加';
+                btnElement.disabled = false;
+            }
+        }
+    }
+
+    async function unsyncSingleEvent(index, btnElement) {
+        if (!isGapiAuthorized) {
+            alert("先に「設定」タブからGoogleカレンダーを連携してください。");
+            return;
+        }
+
+        const sess = upcomingSessions[index];
+        if (!sess.eventId) return;
+
+        if (btnElement) {
+            btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            btnElement.disabled = true;
+        }
+
+        try {
+            await gapi.client.calendar.events.delete({
+                'calendarId': 'primary',
+                'eventId': sess.eventId
+            });
+            sess.eventId = null;
+            saveSessions();
+            renderScheduleList();
+        } catch (err) {
+            console.error(err);
+            if (err.status === 404 || err.status === 410) { // Already deleted
+                sess.eventId = null;
+                saveSessions();
+                renderScheduleList();
+            } else {
+                alert("削除に失敗しました。\\n" + (err.result?.error?.message || ""));
+                if (btnElement) {
+                    btnElement.innerHTML = '<i class="fa-solid fa-trash"></i> 削除';
+                    btnElement.disabled = false;
+                }
+            }
+        }
+    }
+
+    const btnSyncAll = document.getElementById('btn-sync-all');
+    if (btnSyncAll) {
+        btnSyncAll.addEventListener('click', async () => {
+            if (!isGapiAuthorized) {
+                alert("先に「設定」タブからGoogleカレンダーを連携してください。");
+                return;
+            }
+            const unsyncedCount = upcomingSessions.filter(s => !s.eventId).length;
+            if (unsyncedCount === 0) {
+                alert("未同期の予定はありません。");
+                return;
+            }
+
+            btnSyncAll.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 同期中...';
+            btnSyncAll.disabled = true;
+
+            for (let i = 0; i < upcomingSessions.length; i++) {
+                if (!upcomingSessions[i].eventId) {
+                    await syncSingleEvent(i, null);
+                }
+            }
+            alert("一括同期が完了しました！");
+            btnSyncAll.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 未同期の予定を一括追加';
+            btnSyncAll.disabled = false;
+        });
+    }
+
+    const btnRebuildPlan = document.getElementById('btn-rebuild-plan');
+    if (btnRebuildPlan) {
+        btnRebuildPlan.addEventListener('click', () => {
+            if (confirm("現在の予定リストを破棄して再構築しますか？\\n（カレンダー上の同期済イベントは自動削除されません）")) {
+                generateMonthlySchedule();
+            }
+        });
+    }
+
+    // Initialize list on boot
+    renderScheduleList();
 
     // Monthly Setup Actions
     document.getElementById('btn-build-monthly').addEventListener('click', (e) => {
@@ -217,28 +425,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setTimeout(() => {
             isMonthlySetupDone = true;
+            generateMonthlySchedule(); // V6 Plan gen
             document.getElementById('bottom-nav').style.display = 'flex';
-            document.getElementById('monthly-remind-badge').classList.add('hidden');
-            switchTab('view-dashboard');
-            alert("1ヶ月分の予定をカレンダーに登録しました！");
+            const reminderBadge = document.getElementById('monthly-remind-badge');
+            if (reminderBadge) reminderBadge.classList.add('hidden');
+            switchTab('view-plan');
+            alert("1ヶ月分の予定を生成しました！PLANタブからカレンダーへ追加してください。");
 
             btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> 1ヶ月プランを一括生成する';
-        }, 1500);
+        }, 1000);
     });
 
     document.getElementById('btn-skip-setup').addEventListener('click', () => {
         isMonthlySetupDone = true;
         document.getElementById('bottom-nav').style.display = 'flex';
         // Show a reminder badge on dash
-        document.getElementById('monthly-remind-badge').classList.remove('hidden');
+        const reminderBadge = document.getElementById('monthly-remind-badge');
+        if (reminderBadge) reminderBadge.classList.remove('hidden');
         switchTab('view-dashboard');
     });
 
     // Remind badge click
-    document.getElementById('badge-go-setup').addEventListener('click', () => {
-        document.getElementById('bottom-nav').style.display = 'none';
-        switchTab('view-monthly-setup');
-    });
+    const badgeGoSetup = document.getElementById('badge-go-setup');
+    if (badgeGoSetup) {
+        badgeGoSetup.addEventListener('click', () => {
+            document.getElementById('bottom-nav').style.display = 'none';
+            switchTab('view-monthly-setup');
+        });
+    }
 
     // Setting trigger
     document.getElementById('btn-trigger-setup').addEventListener('click', () => {
