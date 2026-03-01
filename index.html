@@ -8,6 +8,9 @@
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>AG-TRAINEE Cockpit V3</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Google API & Identity Services (V5 OAuth2) -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
     <!-- Google Fonts -->
     <link
         href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Noto+Sans+JP:wght@300;400;700&display=swap"
@@ -312,15 +315,23 @@
                 <div class="panel">
                     <h3><i class="fa-solid fa-link"></i> 連携・一括構築</h3>
                     <div class="flex-between mb-15 padding-v-10 border-bottom">
-                        <span>Googleカレンダー同期</span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" checked id="set-sync">
-                            <span class="slider-round"></span>
-                        </label>
+                        <span>Googleカレンダー連携 (API)</span>
+                        <div id="gapi-auth-container">
+                            <button id="btn-gapi-login" class="btn-secondary"
+                                style="padding: 5px 10px; font-size: 0.8rem; height: auto;"><i
+                                    class="fa-brands fa-google"></i> 連携する</button>
+                            <button id="btn-gapi-logout" class="btn-secondary danger-text hidden"
+                                style="padding: 5px 10px; font-size: 0.8rem; height: auto;"><i
+                                    class="fa-solid fa-right-from-bracket"></i> 解除</button>
+                        </div>
                     </div>
+                    <p id="gapi-status-text"
+                        style="font-size: 0.75rem; color: var(--text-main); margin-bottom: 15px; text-align: right;">未連携
+                    </p>
                     <button class="btn-secondary danger-text w-100 mb-10" id="btn-trigger-setup"><i
                             class="fa-solid fa-rotate-right"></i> 今月のスケジュールを再構築</button>
-                    <button class="btn-secondary w-100"><i class="fa-solid fa-list"></i> My Menuの管理 (モック)</button>
+                    <button class="btn-secondary w-100" id="btn-open-menu-editor"><i class="fa-solid fa-list"></i> My
+                        Menuの管理</button>
                 </div>
             </section>
 
@@ -345,6 +356,52 @@
                 <span>SETTING</span>
             </button>
         </nav>
+
+        <!-- ========================================== -->
+        <!-- V4: Edit Menu Modal                        -->
+        <!-- ========================================== -->
+        <div class="modal-overlay" id="menu-editor-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 style="color:var(--text-light);"><i class="fa-solid fa-pen-to-square"></i> My Menu 編集</h3>
+                    <select id="editor-menu-select" class="cockpit-input" style="width:auto; margin-left:10px;">
+                        <option value="A">Menu A</option>
+                        <option value="B">Menu B</option>
+                        <option value="C">Menu C</option>
+                    </select>
+                    <button class="close-modal" id="btn-close-editor"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <div class="editor-list" id="editor-list-container">
+                    <!-- Populated by JS -->
+                </div>
+
+                <button class="btn-secondary mb-10" id="btn-editor-add-ex"><i class="fa-solid fa-plus"></i>
+                    種目を追加</button>
+                <button class="btn-action pulse" id="btn-editor-save">変更を保存 (SAVE)</button>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- V4: Tutorial Overlay                       -->
+        <!-- ========================================== -->
+        <div class="tutorial-overlay" id="tutorial-overlay">
+            <div class="tutorial-card">
+                <div class="tutorial-img" id="tut-icon"><i class="fa-solid fa-rocket"></i></div>
+                <h3 id="tut-title" style="color:var(--text-light); margin-bottom: 10px;">超効率システム起動</h3>
+                <p id="tut-desc" style="font-size:0.9rem; color:var(--text-main); line-height:1.5; min-height: 60px;">
+                    AG-TRAINEEへようこそ。<br>入力と迷いを極限まで削ぎ落とした、あなた専用のコックピットです。</p>
+
+                <div class="tut-dots">
+                    <div class="tut-dot active" id="tut-dot-1"></div>
+                    <div class="tut-dot" id="tut-dot-2"></div>
+                    <div class="tut-dot" id="tut-dot-3"></div>
+                    <div class="tut-dot" id="tut-dot-4"></div>
+                </div>
+
+                <button class="btn-action" id="btn-tut-next">NEXT <i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+        </div>
     </div>
 
     <!-- Scripts -->

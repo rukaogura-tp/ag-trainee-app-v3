@@ -20,6 +20,120 @@ document.addEventListener('DOMContentLoaded', () => {
     let consumedMacros = { p: 75, c: 180, f: 40 };
     let isMonthlySetupDone = false; // Mock monthly flag
 
+    // --- V4 Tutorial State ---
+    const isTutorialDone = localStorage.getItem('ag_tutorial_done') === 'true';
+
+    // ==========================================
+    // V5: Google Calendar API (OAuth2) Config
+    // ==========================================
+    // ▼本番運用時は適切なGCPプロジェクトの認証情報を設定してください▼
+    const GAPI_CLIENT_ID = '470517358721-fnnme30m46bv24hf76vrdgcrgmdal67d.apps.googleusercontent.com';
+    const GAPI_API_KEY = 'AIzaSyBEiN0KWECX3cnrhHDEgTvQwr4LohXO8nY';
+    const GAPI_DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'];
+    const GAPI_SCOPES = 'https://www.googleapis.com/auth/calendar.events';
+
+    let tokenClient;
+    let gapiInited = false;
+    let gisInited = false;
+    let isGapiAuthorized = false;
+
+    // Load API scripts globally handles
+    window.gapiLoadOkay = function () {
+        gapi.load('client', initializeGapiClient);
+    };
+
+    window.gisLoadOkay = function () {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: GAPI_CLIENT_ID,
+            scope: GAPI_SCOPES,
+            callback: '', // defined at request time
+        });
+        gisInited = true;
+        checkGapiAuthVisibility();
+    };
+
+    async function initializeGapiClient() {
+        try {
+            await gapi.client.init({
+                apiKey: GAPI_API_KEY,
+                discoveryDocs: GAPI_DISCOVERY_DOCS,
+            });
+            gapiInited = true;
+            checkGapiAuthVisibility();
+        } catch (err) {
+            console.warn('GAPI Init Error:', err);
+        }
+    }
+
+    // Since scripts might be loaded before DOM or asynchronously, we hook them up
+    if (window.gapi) window.gapiLoadOkay();
+    if (window.google) window.gisLoadOkay();
+
+    function checkGapiAuthVisibility() {
+        // Init UI states
+        if (gapiInited && gisInited) {
+            updateGapiAuthUI();
+        }
+    }
+
+    function updateGapiAuthUI() {
+        const btnLogin = document.getElementById('btn-gapi-login');
+        const btnLogout = document.getElementById('btn-gapi-logout');
+        const statusText = document.getElementById('gapi-status-text');
+
+        if (isGapiAuthorized) {
+            btnLogin.classList.add('hidden');
+            btnLogout.classList.remove('hidden');
+            statusText.innerText = "連携済み (OAuth2 Active)";
+            statusText.style.color = "var(--success)";
+        } else {
+            btnLogin.classList.remove('hidden');
+            btnLogout.classList.add('hidden');
+            statusText.innerText = "未連携";
+            statusText.style.color = "var(--text-main)";
+        }
+    }
+
+    document.getElementById('btn-gapi-login').addEventListener('click', () => {
+        // GAPI / GSI が初期化されていない場合は警告（APIKeyのプレースホルダによるエラーを防ぐ）
+        if (GAPI_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT')) {
+            alert("開発者向け警告：\n本番動作には正しいGCP Client IDおよびAPI Keyの設定が必要です。\n(実装自体はコードレベルで完了しています)");
+            // 疑似的に連携状態にする（UIデモ用）
+            isGapiAuthorized = true;
+            updateGapiAuthUI();
+            return;
+        }
+
+        tokenClient.callback = async (resp) => {
+            if (resp.error !== undefined) {
+                throw (resp);
+            }
+            isGapiAuthorized = true;
+            updateGapiAuthUI();
+            alert("Google カレンダーとの連携に成功しました！");
+        };
+
+        if (gapi.client.getToken() === null) {
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+        } else {
+            tokenClient.requestAccessToken({ prompt: '' });
+        }
+    });
+
+    document.getElementById('btn-gapi-logout').addEventListener('click', () => {
+        const token = gapi.client.getToken();
+        if (token !== null) {
+            google.accounts.oauth2.revoke(token.access_token);
+            gapi.client.setToken('');
+            isGapiAuthorized = false;
+            updateGapiAuthUI();
+            alert("カレンダー連携を解除しました。");
+        } else if (GAPI_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT')) {
+            isGapiAuthorized = false;
+            updateGapiAuthUI();
+        }
+    });
+
     // --- Tab Navigation & View Management ---
     const navButtons = document.querySelectorAll('.nav-btn');
     const viewSections = document.querySelectorAll('.view-section');
@@ -48,13 +162,52 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // --- 0. Monthly Setup Boot ---
-    // At launch, decide which view to show
-    if (!isMonthlySetupDone) {
-        document.getElementById('bottom-nav').style.display = 'none'; // Hide nav during setup
-        switchTab('view-monthly-setup');
+    // --- V4 0. Tutorial Overlay App Boot ---
+    if (!isTutorialDone) {
+        document.getElementById('bottom-nav').style.display = 'none';
+        const modal = document.getElementById('tutorial-overlay');
+        modal.classList.add('show');
+
+        const tutStates = [
+            { icon: 'fa-rocket', title: '超効率システム起動', desc: 'AG-TRAINEEへようこそ。<br>入力と迷いを極限まで削ぎ落とした、あなた専用のコックピットです。' },
+            { icon: 'fa-calendar-check', title: '自動カレンダー構築', desc: '目標と空き時間をAIが解析し、<br>1ヶ月の予定を一瞬でカレンダーに書き込みます。' },
+            { icon: 'fa-dumbbell', title: 'スマートLOG機能', desc: 'スクロール不要のカード型UI。<br>1タップで完了し、自動で次のセットへ進みます。' },
+            { icon: 'fa-wand-magic-sparkles', title: '罪悪感ゼロのリカバリー', desc: '急な飲み会や残業で中止しても大丈夫。<br>AIが即座に翌日以降のプランを再計算します。' }
+        ];
+
+        let tutStep = 0;
+        document.getElementById('btn-tut-next').addEventListener('click', () => {
+            tutStep++;
+            if (tutStep >= tutStates.length) {
+                // Finish Tutorial
+                localStorage.setItem('ag_tutorial_done', 'true');
+                modal.classList.remove('show');
+                startMonthlySetupPhase();
+                return;
+            }
+            // Update UI
+            document.getElementById('tut-icon').innerHTML = `<i class="fa-solid ${tutStates[tutStep].icon}"></i>`;
+            document.getElementById('tut-title').innerText = tutStates[tutStep].title;
+            document.getElementById('tut-desc').innerHTML = tutStates[tutStep].desc;
+
+            document.querySelectorAll('.tut-dot').forEach((d, i) => {
+                i === tutStep ? d.classList.add('active') : d.classList.remove('active');
+            });
+            if (tutStep === tutStates.length - 1) document.getElementById('btn-tut-next').innerHTML = 'START <i class="fa-solid fa-play"></i>';
+        });
     } else {
-        switchTab('view-dashboard');
+        startMonthlySetupPhase();
+    }
+
+    // --- 0. Monthly Setup Boot ---
+    function startMonthlySetupPhase() {
+        if (!isMonthlySetupDone) {
+            document.getElementById('bottom-nav').style.display = 'none'; // Hide nav during setup
+            switchTab('view-monthly-setup');
+        } else {
+            document.getElementById('bottom-nav').style.display = 'flex';
+            switchTab('view-dashboard');
+        }
     }
 
     // Monthly Setup Actions
@@ -93,21 +246,89 @@ document.addEventListener('DOMContentLoaded', () => {
         switchTab('view-monthly-setup');
     });
 
-    // --- 1. Dashboard Accept ---
-    document.getElementById('btn-accept-protocol').addEventListener('click', (e) => {
+    // --- 1. Dashboard Accept (V4 Intent Logic -> V5 API Insert) ---
+    document.getElementById('btn-accept-protocol').addEventListener('click', async (e) => {
         const btn = e.target;
-        btn.innerHTML = "<i class='fa-solid fa-calendar-check'></i> カレンダー登録完了";
-        btn.style.background = "var(--success)";
+        btn.innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i> 登録処理中...";
+        btn.style.background = "var(--warning)";
+        btn.style.color = "#000";
         btn.classList.remove('pulse');
-        setTimeout(() => {
-            switchTab('view-logger');
-            btn.style.background = "var(--primary)";
-            btn.innerHTML = "<i class=\"fa-solid fa-calendar-plus\"></i> カレンダーに登録 (OK)";
-            btn.classList.add('pulse');
-        }, 800);
+
+        // V4/V5 Shared Data
+        const summary = "[AG] 本日のプロトコル (胸・三頭)";
+        const description = "AG-TRAINEE アプリからの自動生成スケジュールです。\n完全なボリュームをこなす最適なタイミングです。";
+
+        // Create times
+        const now = new Date();
+        const startDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 30, 0); // today 18:30 (Local)
+        const endDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 19, 30, 0);   // today 19:30 (Local)
+
+        if (isGapiAuthorized && !GAPI_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT')) {
+            // Real OAuth2 API Request
+            const event = {
+                'summary': summary,
+                'description': description,
+                'start': {
+                    'dateTime': startDateTime.toISOString(),
+                    'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone
+                },
+                'end': {
+                    'dateTime': endDateTime.toISOString(),
+                    'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone
+                }
+            };
+            try {
+                const request = gapi.client.calendar.events.insert({
+                    'calendarId': 'primary',
+                    'resource': event
+                });
+                await request.execute();
+
+                // Success
+                btn.innerHTML = "<i class='fa-solid fa-check'></i> 登録完了";
+                btn.style.background = "var(--success)";
+                btn.style.color = "#fff";
+
+                setTimeout(() => {
+                    switchTab('view-logger');
+                    btn.style.background = "var(--primary)";
+                    btn.style.color = "#111"; // reset to default
+                    btn.innerHTML = "<i class=\"fa-solid fa-calendar-plus\"></i> カレンダーに登録 (OK)";
+                    btn.classList.add('pulse');
+                }, 1000);
+            } catch (err) {
+                console.error("GAPI Insert Failed:", err);
+                alert("カレンダーへの書き込みに失敗しました。詳細：\n" + (err.result?.error?.message || "不明なエラー"));
+                btn.style.background = "var(--primary)";
+                btn.style.color = "#111";
+                btn.innerHTML = "<i class=\"fa-solid fa-calendar-plus\"></i> カレンダーに登録 (OK)";
+                btn.classList.add('pulse');
+            }
+        } else {
+            // V4 Fallback: Web Intent Open Window
+            const yyyy = now.getUTCFullYear();
+            const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+            const dd = String(now.getUTCDate()).padStart(2, '0');
+            // Add roughly 9 hours for JST in mock URI
+            const startStr = `${yyyy}${mm}${dd}T093000Z`;
+            const endStr = `${yyyy}${mm}${dd}T103000Z`;
+            const url = `https://calendar.google.com/calendar/r/eventedit?text=${encodeURIComponent(summary)}&details=${encodeURIComponent(description)}&dates=${startStr}/${endStr}`;
+
+            setTimeout(() => {
+                // Open real google calendar intent in new tab
+                window.open(url, '_blank');
+
+                // Switch our app UI
+                switchTab('view-logger');
+                btn.style.background = "var(--primary)";
+                btn.style.color = "#111";
+                btn.innerHTML = "<i class=\"fa-solid fa-calendar-plus\"></i> カレンダーに登録 (OK)";
+                btn.classList.add('pulse');
+            }, 1000);
+        }
     });
 
-    // --- 2. Workout Logger (V3 Card UI with detailed sets) ---
+    // --- 2. Workout Logger (V4 Card UI + Editor logic) ---
     // V3 Data Structure: Sets are arrays of objects
     const menus = {
         'A': [
@@ -508,5 +729,119 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateNutritionUI();
         alert("設定を保存しました。目標マクロが更新されました。");
+    });
+
+    // --- V4: My Menu Editor ---
+    const editorModal = document.getElementById('menu-editor-modal');
+    const editorSelect = document.getElementById('editor-menu-select');
+    const editorList = document.getElementById('editor-list-container');
+    let editingMenuKey = 'A';
+    let tempMenuData = []; // Deep copy of the menu currently being edited
+
+    document.getElementById('btn-open-menu-editor').addEventListener('click', () => {
+        editorModal.classList.add('show');
+        editingMenuKey = 'A';
+        editorSelect.value = 'A';
+        loadMenuToEditor();
+    });
+
+    document.getElementById('btn-close-editor').addEventListener('click', () => {
+        editorModal.classList.remove('show');
+    });
+
+    editorSelect.addEventListener('change', (e) => {
+        editingMenuKey = e.target.value;
+        loadMenuToEditor();
+    });
+
+    function loadMenuToEditor() {
+        tempMenuData = JSON.parse(JSON.stringify(menus[editingMenuKey] || []));
+        renderEditorList();
+    }
+
+    function renderEditorList() {
+        editorList.innerHTML = '';
+        tempMenuData.forEach((ex, index) => {
+            const div = document.createElement('div');
+            div.className = 'editor-item';
+            div.innerHTML = `
+                <div class="editor-item-top">
+                    <input type="text" class="cockpit-input mb-10" style="padding:6px; font-size:0.9rem; font-weight:bold; color:var(--primary);" value="${ex.name}" data-idx="${index}" data-field="name">
+                    <button class="delete-ex-btn" data-idx="${index}"><i class="fa-solid fa-trash-can"></i></button>
+                </div>
+                <!-- 簡易的に全セット共通のデフォルト値を設定 -->
+                <div class="edit-inputs">
+                    <div><label>セット数</label><input type="number" min="1" max="10" value="${ex.sets.length}" data-idx="${index}" data-field="setCount"></div>
+                    <div><label>重量</label><input type="number" min="0" step="2.5" value="${ex.sets[0]?.weight || 0}" data-idx="${index}" data-field="weight"></div>
+                    <div><label>回数</label><input type="number" min="1" value="${ex.sets[0]?.reps || 10}" data-idx="${index}" data-field="reps"></div>
+                </div>
+            `;
+            editorList.appendChild(div);
+        });
+
+        // Add event listeners for dynamic inputs
+        document.querySelectorAll('.editor-item input').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.getAttribute('data-idx'));
+                const field = e.target.getAttribute('data-field');
+                const val = e.target.type === 'number' ? parseFloat(e.target.value) : e.target.value;
+
+                if (field === 'name') {
+                    tempMenuData[idx].name = val;
+                } else if (field === 'setCount' || field === 'weight' || field === 'reps') {
+                    // Update array structure
+                    const newCount = field === 'setCount' ? val : tempMenuData[idx].sets.length;
+                    const newW = field === 'weight' ? val : (tempMenuData[idx].sets[0]?.weight || 0);
+                    const newR = field === 'reps' ? val : (tempMenuData[idx].sets[0]?.reps || 10);
+
+                    const newSets = [];
+                    for (let i = 0; i < newCount; i++) {
+                        newSets.push({ id: parseInt(`${tempMenuData[idx].id}0${i + 1}`), weight: newW, reps: newR, done: false });
+                    }
+                    tempMenuData[idx].sets = newSets;
+                    if (field === 'setCount') renderEditorList(); // Re-render if count changed because input holds value
+                }
+            });
+        });
+
+        document.querySelectorAll('.delete-ex-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(e.target.closest('button').getAttribute('data-idx'));
+                tempMenuData.splice(idx, 1);
+                renderEditorList();
+            });
+        });
+    }
+
+    document.getElementById('btn-editor-add-ex').addEventListener('click', () => {
+        const newId = Date.now() % 10000;
+        tempMenuData.push({
+            id: newId,
+            name: '新しい種目',
+            activeSetIndex: 0,
+            sets: [
+                { id: newId * 10 + 1, weight: 20, reps: 10, done: false },
+                { id: newId * 10 + 2, weight: 20, reps: 10, done: false },
+                { id: newId * 10 + 3, weight: 20, reps: 10, done: false }
+            ]
+        });
+        renderEditorList();
+        // Scroll to bottom
+        editorList.scrollTop = editorList.scrollHeight;
+    });
+
+    document.getElementById('btn-editor-save').addEventListener('click', () => {
+        // Save back to main menus object
+        menus[editingMenuKey] = JSON.parse(JSON.stringify(tempMenuData));
+
+        // If the currently viewed menu is the one we edited, re-render it
+        const currentMenuOnLog = document.getElementById('my-menu-select').value;
+        if (currentMenuOnLog === editingMenuKey) {
+            currentWorkout = JSON.parse(JSON.stringify(menus[editingMenuKey]));
+            renderWorkoutCards();
+        }
+
+        editorModal.classList.remove('show');
+        alert(`Menu ${editingMenuKey} を更新し、LOG画面に反映しました！`);
     });
 });
