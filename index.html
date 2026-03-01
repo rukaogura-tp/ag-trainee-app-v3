@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <!-- スマホPWA最適化: ズーム禁止、タップディレイ排除 -->
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>AG-TRAINEE Cockpit V3</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Noto+Sans+JP:wght@300;400;700&display=swap"
+        rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <div id="app-container">
+        <!-- Application Header -->
+        <header id="top-bar">
+            <div class="logo">
+                <i class="fa-solid fa-jet-fighter"></i> AG-TRAINEE
+            </div>
+            <div class="status-panel">
+                <span class="status-light sync-active"></span> カレンダー同期中
+            </div>
+        </header>
+
+        <!-- Main Content Area (Views) -->
+        <main id="main-view">
+
+            <!-- ========================================== -->
+            <!-- 0. MONTHLY SETUP (First Launch of the Month) -->
+            <!-- ========================================== -->
+            <section id="view-monthly-setup" class="view-section active">
+                <div class="success-header">
+                    <i class="fa-regular fa-calendar-check giant-icon text-primary pulse"></i>
+                    <h2 class="view-title mt-10" style="border:none; text-align:center;">MONTHLY SETUP</h2>
+                </div>
+
+                <div class="panel info-panel text-center">
+                    <p class="mb-15">新しい月が始まりました。あなたの目標「<span id="setup-target-display"
+                            class="text-light font-bold">筋肥大</span>」と「<span id="setup-split-display"
+                            class="text-light font-bold">3分割</span>」に基づき、1ヶ月分の最適なトレーニングスケジュールをカレンダー上に一括構築します。</p>
+                    <ul class="conflict-list text-left mb-15">
+                        <li><i class="fa-solid fa-check text-success"></i> 目標回復時間を考慮した分割</li>
+                        <li><i class="fa-solid fa-check text-success"></i> 既存の予定（仕事・飲み会など）を自動回避</li>
+                    </ul>
+                </div>
+
+                <button class="btn-action giant-btn" id="btn-build-monthly">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> 1ヶ月プランを一括生成する
+                </button>
+                <button class="btn-secondary mt-10" id="btn-skip-setup">スキップして手動で設定</button>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- 1. DASHBOARD / HOME (Calendar & AI Suggest) -->
+            <!-- ========================================== -->
+            <section id="view-dashboard" class="view-section">
+                <!-- V3 Setup Link -->
+                <div class="text-right mb-10 hidden" id="monthly-remind-badge">
+                    <span class="badge intensity-high pulse" style="cursor:pointer;"
+                        id="badge-go-setup">月間未セットアップ</span>
+                </div>
+
+                <h2 class="view-title">本日のプロトコル</h2>
+
+                <div class="panel highlight-panel">
+                    <h3><i class="fa-solid fa-robot"></i> AIの提案</h3>
+                    <div class="recommendation-card">
+                        <div class="rec-time">
+                            <i class="fa-regular fa-clock"></i> <span id="dash-rec-time">18:30 - 19:30</span>
+                        </div>
+                        <div class="rec-details">
+                            <span class="badge intensity-high" id="dash-rec-intensity">高強度</span>
+                            <span class="badge target-muscle" id="dash-rec-muscle">胸・三頭 (My Menu A)</span>
+                        </div>
+                        <p class="rec-reason">カレンダー解析：夜の予定なし。<br>完全なボリュームをこなす最適なタイミングです。</p>
+                        <button class="btn-action pulse" id="btn-accept-protocol"><i
+                                class="fa-solid fa-calendar-plus"></i> カレンダーに登録 (OK)</button>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>回避履歴</h3>
+                    <ul class="conflict-list">
+                        <li><i class="fa-solid fa-ban text-danger"></i> 20:00 飲み会 (場所: 飲食店) -> 時間帯を除外</li>
+                        <li><i class="fa-solid fa-ban text-danger"></i> 14:00 商談 (場所: 出先) -> 優先度低下</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- 2. WORKOUT LOGGER (V3 Card UI)             -->
+            <!-- ========================================== -->
+            <section id="view-logger" class="view-section">
+                <div class="logger-header">
+                    <h2 class="view-title">記録</h2>
+                    <!-- My Menu Selector -->
+                    <select class="my-menu-selector" id="my-menu-select">
+                        <option value="A">My Menu A (胸・三頭)</option>
+                        <option value="B">My Menu B (背中・二頭)</option>
+                        <option value="C">My Menu C (脚・肩)</option>
+                    </select>
+                </div>
+
+                <!-- Cards Container (replaces table) -->
+                <div id="workout-cards-container">
+                    <!-- Cards generated via JS -->
+                </div>
+
+                <div class="action-footer">
+                    <button class="btn-action giant-btn" id="btn-finish-workout">
+                        <i class="fa-solid fa-flag-checkered"></i> メニューを完了
+                    </button>
+                    <button class="btn-secondary danger-text mt-10" id="btn-abort-workout">
+                        <i class="fa-solid fa-triangle-exclamation"></i> 中止する (ABORT)
+                    </button>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- 3. FEEDBACK (After Workout)                -->
+            <!-- ========================================== -->
+            <section id="view-feedback" class="view-section">
+                <!-- 完了時UI -->
+                <div id="feedback-success" class="hidden">
+                    <div class="success-header">
+                        <i class="fa-solid fa-trophy giant-icon text-success"></i>
+                        <h2 class="view-title mt-10">PROTOCOL COMPLETED</h2>
+                    </div>
+                    <div class="panel highlight-panel info-panel text-center">
+                        <p id="ai-praise-message">素晴らしい！今日の予定を完璧にこなしましたね。筋肉へ確実なシグナルが送られました。</p>
+                    </div>
+
+                    <div class="panel">
+                        <h3>今日の記録（任意）</h3>
+                        <p class="small-text text-muted mb-10">調子や気づきを一言残しましょう</p>
+                        <textarea id="workout-memo" class="cockpit-textarea" placeholder="例：ベンチの重量が軽かった。次は+2.5kgいける。"
+                            rows="3"></textarea>
+                        <button class="btn-action mt-10" id="btn-save-memo"><i class="fa-solid fa-save"></i>
+                            記録を保存</button>
+                    </div>
+                </div>
+
+                <!-- 中止時UI -->
+                <div id="feedback-abort" class="hidden">
+                    <h2 class="view-title text-danger">PROTOCOL ABORTED</h2>
+                    <div class="panel danger-panel">
+                        <h3>目標軌道修正システム</h3>
+                        <p class="small-text mb-15">中止の理由を教えてください。最短のリカバリー案を今月のカレンダーから再計算します。</p>
+
+                        <div class="reason-selector">
+                            <label class="radio-card">
+                                <input type="radio" name="abort-reason" value="work">
+                                <div class="card-content">
+                                    <i class="fa-solid fa-briefcase"></i>
+                                    <span>仕事・残業</span>
+                                </div>
+                            </label>
+                            <label class="radio-card">
+                                <input type="radio" name="abort-reason" value="energy">
+                                <div class="card-content">
+                                    <i class="fa-solid fa-battery-empty"></i>
+                                    <span>気力・体力なし</span>
+                                </div>
+                            </label>
+                            <label class="radio-card">
+                                <input type="radio" name="abort-reason" value="social">
+                                <div class="card-content">
+                                    <i class="fa-solid fa-glass-cheers"></i>
+                                    <span>遊び・飲み会</span>
+                                </div>
+                            </label>
+                            <label class="radio-card">
+                                <input type="radio" name="abort-reason" value="other">
+                                <div class="card-content">
+                                    <i class="fa-solid fa-question"></i>
+                                    <span>その他</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="ai-recovery-plan" class="recovery-plan-container hidden">
+                            <h4><i class="fa-solid fa-wand-magic-sparkles"></i> AI リカバリー案</h4>
+                            <p id="recovery-plan-text" class="plan-text"></p>
+                            <button class="btn-action" id="btn-accept-recovery">方針を決定</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- 4. NUTRITION TRACKER                       -->
+            <!-- ========================================== -->
+            <section id="view-nutrition" class="view-section">
+                <h2 class="view-title">栄養管理（不足分）</h2>
+
+                <div class="macro-dashboard">
+                    <p class="small-text text-muted mb-10 text-right"><i class="fa-solid fa-bullseye"></i> 目標：<span
+                            id="nutri-target-cal">2500</span>kcal</p>
+
+                    <div class="macro-card protein">
+                        <span class="macro-label">タンパク質 (残)</span>
+                        <span class="macro-value"><span id="lack-p">75</span><span class="unit">g</span></span>
+                        <div class="progress-track">
+                            <div class="progress-fill" id="bar-p" style="width: 40%;"></div>
+                        </div>
+                    </div>
+                    <div class="macro-card carbs">
+                        <span class="macro-label">炭水化物 (残)</span>
+                        <span class="macro-value"><span id="lack-c">120</span><span class="unit">g</span></span>
+                        <div class="progress-track">
+                            <div class="progress-fill" id="bar-c" style="width: 60%;"></div>
+                        </div>
+                    </div>
+                    <div class="macro-card fat">
+                        <span class="macro-label">脂質 (残)</span>
+                        <span class="macro-value"><span id="lack-f">20</span><span class="unit">g</span></span>
+                        <div class="progress-track">
+                            <div class="progress-fill" id="bar-f" style="width: 20%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <button class="btn-secondary w-100" id="btn-manual-add"><i class="fa-solid fa-plus"></i> 現在値を更新
+                        (手動記録)</button>
+                </div>
+
+                <div class="panel highlight-panel">
+                    <h3><i class="fa-solid fa-store"></i> AI コンビニレコメンド</h3>
+                    <p class="small-text mb-10 text-muted">残りのマクロを埋める最適な食材</p>
+                    <div class="food-recommendations" id="food-rec-container">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Night time feedback -->
+                <div class="panel info-panel" id="nutrition-feedback">
+                    <h3><i class="fa-solid fa-comment-dots"></i> 今日の総括</h3>
+                    <p class="small-text">タンパク質はほぼ目標達成です！明日のトレーニングに備えて十分な炭水化物を摂れましたね。お疲れ様でした。</p>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- 5. SETTINGS / PROFILE                      -->
+            <!-- ========================================== -->
+            <section id="view-settings" class="view-section">
+                <h2 class="view-title">設定・プロフィール</h2>
+
+                <div class="panel">
+                    <h3><i class="fa-solid fa-bullseye"></i> トレーニング目標</h3>
+                    <select class="cockpit-input mb-15" id="set-target">
+                        <option value="hypertrophy">筋肥大</option>
+                        <option value="diet">ダイエット（減量）</option>
+                        <option value="maintenance">維持</option>
+                    </select>
+
+                    <h3><i class="fa-solid fa-layer-group"></i> 分割法</h3>
+                    <select class="cockpit-input mb-15" id="set-split">
+                        <option value="3split">3分割 (胸・三頭/背中・二頭/脚・肩)</option>
+                        <option value="2split">2分割 (上・下)</option>
+                        <option value="full">全身</option>
+                    </select>
+
+                    <div class="grid-2col mb-15">
+                        <div>
+                            <h3>月間回数</h3>
+                            <input type="number" class="cockpit-input" id="set-freq" value="12" min="1" max="30">
+                        </div>
+                        <div>
+                            <h3>移動時間(分)</h3>
+                            <input type="number" class="cockpit-input" id="set-commute" value="15" min="0" max="60">
+                        </div>
+                    </div>
+
+                    <h3><i class="fa-solid fa-sun"></i> 希望時間帯</h3>
+                    <select class="cockpit-input mb-15" id="set-time">
+                        <option value="morning">朝 (06:00 - 09:00)</option>
+                        <option value="noon">昼 (12:00 - 14:00)</option>
+                        <option value="night" selected>夜 (18:00 - 22:00)</option>
+                    </select>
+                </div>
+
+                <div class="panel">
+                    <h3><i class="fa-solid fa-chart-pie"></i> 栄養目標 (1日)</h3>
+                    <div class="grid-3col mb-15">
+                        <div>
+                            <label class="small-text">カロリー</label>
+                            <input type="number" class="cockpit-input" id="set-cal" value="2500">
+                        </div>
+                        <div>
+                            <label class="small-text">P (g)</label>
+                            <input type="number" class="cockpit-input" id="set-p" value="150">
+                        </div>
+                        <div>
+                            <label class="small-text">C (g)</label>
+                            <input type="number" class="cockpit-input" id="set-c" value="300">
+                        </div>
+                        <div>
+                            <label class="small-text">F (g)</label>
+                            <input type="number" class="cockpit-input" id="set-f" value="60">
+                        </div>
+                    </div>
+                    <button class="btn-secondary w-100" id="btn-save-settings">設定を保存</button>
+                </div>
+
+                <div class="panel">
+                    <h3><i class="fa-solid fa-link"></i> 連携・一括構築</h3>
+                    <div class="flex-between mb-15 padding-v-10 border-bottom">
+                        <span>Googleカレンダー同期</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" checked id="set-sync">
+                            <span class="slider-round"></span>
+                        </label>
+                    </div>
+                    <button class="btn-secondary danger-text w-100 mb-10" id="btn-trigger-setup"><i
+                            class="fa-solid fa-rotate-right"></i> 今月のスケジュールを再構築</button>
+                    <button class="btn-secondary w-100"><i class="fa-solid fa-list"></i> My Menuの管理 (モック)</button>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Bottom Navigation -->
+        <nav id="bottom-nav">
+            <button class="nav-btn" data-target="view-dashboard">
+                <i class="fa-solid fa-radar"></i>
+                <span>HOME</span>
+            </button>
+            <button class="nav-btn" data-target="view-logger">
+                <i class="fa-solid fa-dumbbell"></i>
+                <span>LOG</span>
+            </button>
+            <button class="nav-btn" data-target="view-nutrition">
+                <i class="fa-solid fa-chart-pie"></i>
+                <span>NUTRI</span>
+            </button>
+            <button class="nav-btn" data-target="view-settings">
+                <i class="fa-solid fa-gear"></i>
+                <span>SETTING</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Scripts -->
+    <script src="app.js"></script>
+</body>
+
+</html>
